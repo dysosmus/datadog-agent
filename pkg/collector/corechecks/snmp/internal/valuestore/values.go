@@ -12,6 +12,7 @@ import (
 	"maps"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
@@ -64,6 +65,8 @@ type ResultValueStore struct {
 	// TODO: make fields private + use a constructor instead
 	ScalarValues ScalarResultValuesType `json:"scalar_values"`
 	ColumnValues ColumnResultValuesType `json:"column_values"`
+	// FetchTime is when the fetch of these values started. Zero means unknown.
+	FetchTime time.Time `json:"-"`
 }
 
 // ContainsScalarValue returns whether a scalar oid is present in ResultValueStore

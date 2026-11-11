@@ -159,6 +159,12 @@ func (m *MockSender) GaugeWithTimestamp(metric string, value float64, hostname s
 	return nil
 }
 
+// RateWithTimestamp adds a rate with timestamp type to the mock calls.
+func (m *MockSender) RateWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error {
+	m.Called(metric, value, hostname, tags, timestamp)
+	return nil
+}
+
 // CountWithTimestamp adds a count with timestamp type to the mock calls.
 func (m *MockSender) CountWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error {
 	m.Called(metric, value, hostname, tags, timestamp)

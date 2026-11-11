@@ -8,6 +8,7 @@ package report
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/aggregator/sender"
 	"github.com/DataDog/datadog-agent/pkg/metrics/servicecheck"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/networkdevice/profile/profiledefinition"
 	"github.com/DataDog/datadog-agent/pkg/networkdevice/utils"
+	"github.com/DataDog/datadog-agent/pkg/snmp"
 	"github.com/DataDog/datadog-agent/pkg/snmp/snmpintegration"
 
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/checkconfig"
@@ -28,6 +30,10 @@ type MetricSender struct {
 	submittedMetrics        int
 	interfaceConfigs        []snmpintegration.InterfaceConfig
 	interfaceBandwidthState InterfaceBandwidthState
+	rateClock               *RateClock
+	// rateTimestamp is the timestamp, in seconds since epoch, of the rate samples of the current
+	// run. Zero means that the aggregator uses the submission time.
+	rateTimestamp float64
 }
 
 // MetricSample is a collected metric sample with its metadata, ready to be submitted through the metric sender
@@ -51,6 +57,12 @@ func NewMetricSender(sender sender.Sender, hostname string, interfaceConfigs []s
 
 // ReportMetrics reports metrics using Sender
 func (ms *MetricSender) ReportMetrics(metrics []profiledefinition.MetricsConfig, values *valuestore.ResultValueStore, tags []string, deviceID string) {
+	ms.rateTimestamp = 0
+	if ms.rateClock != nil && values != nil && !values.FetchTime.IsZero() {
+		uptime, hasUptime := scalarFloat(values, snmp.DeviceSysUptimeOid)
+		ms.rateTimestamp = ms.rateClock.Next(values.FetchTime, uptime, hasUptime)
+	}
+
 	scalarSamples := make(map[string]MetricSample)
 	columnSamples := make(map[string]map[string]MetricSample)
 
@@ -267,8 +279,18 @@ func (ms *MetricSender) Gauge(metric string, value float64, tags []string) {
 	ms.sender.Gauge(metric, value, ms.hostname, tags)
 }
 
-// Rate wraps Sender.Rate
+// SetRateClock sets the clock that gives the timestamp of the rate samples
+func (ms *MetricSender) SetRateClock(clock *RateClock) {
+	ms.rateClock = clock
+}
+
+// Rate wraps Sender.Rate. The sample gets the timestamp from the rate clock, see RateClock.
 func (ms *MetricSender) Rate(metric string, value float64, tags []string) {
+	if ms.rateTimestamp > 0 {
+		if err := ms.sender.RateWithTimestamp(metric, value, ms.hostname, tags, ms.rateTimestamp); err == nil {
+			return
+		}
+	}
 	ms.sender.Rate(metric, value, ms.hostname, tags)
 }
 
@@ -280,6 +302,26 @@ func (ms *MetricSender) MonotonicCount(metric string, value float64, tags []stri
 // ServiceCheck wraps Sender.ServiceCheck
 func (ms *MetricSender) ServiceCheck(CheckName string, status servicecheck.ServiceCheckStatus, tags []string, message string) {
 	ms.sender.ServiceCheck(CheckName, status, ms.hostname, tags, message)
+}
+
+// rateTimestampNano returns the timestamp of the rate samples in nanoseconds since epoch
+func (ms *MetricSender) rateTimestampNano() int64 {
+	if ms.rateTimestamp > 0 {
+		return int64(ms.rateTimestamp * float64(time.Second))
+	}
+	return TimeNow().UnixNano()
+}
+
+func scalarFloat(values *valuestore.ResultValueStore, oid string) (float64, bool) {
+	value, err := values.GetScalarValue(oid)
+	if err != nil {
+		return 0, false
+	}
+	f, err := value.ToFloat64()
+	if err != nil {
+		return 0, false
+	}
+	return f, true
 }
 
 // GetSubmittedMetrics returns submitted metrics count

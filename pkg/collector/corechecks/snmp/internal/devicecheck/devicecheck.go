@@ -149,6 +149,7 @@ type DeviceCheck struct {
 	savedDynamicTags        []string
 	diagnoses               *diagnoses.Diagnoses
 	interfaceBandwidthState report.InterfaceBandwidthState
+	rateClock               *report.RateClock
 	cacheKey                string
 	agentConfig             config.Component
 	profileCache            profileCache
@@ -178,6 +179,7 @@ func NewDeviceCheck(config *checkconfig.CheckConfig, connMgr ConnectionManager, 
 		sessionCloseErrorCount:  atomic.NewUint64(0),
 		diagnoses:               diagnoses.NewDeviceDiagnoses(config.DeviceID),
 		interfaceBandwidthState: report.MakeInterfaceBandwidthState(),
+		rateClock:               report.NewRateClock(),
 		cacheKey:                cacheKey,
 		agentConfig:             agentConfig,
 	}
@@ -194,6 +196,7 @@ func NewDeviceCheck(config *checkconfig.CheckConfig, connMgr ConnectionManager, 
 // SetSender sets the current sender
 func (d *DeviceCheck) SetSender(sender *report.MetricSender) {
 	d.sender = sender
+	sender.SetRateClock(d.rateClock)
 }
 
 // SetInterfaceBandwidthState sets the interface bandwidth state
@@ -418,8 +421,12 @@ func (d *DeviceCheck) getValuesAndTags(sess session.Session, deviceReachable boo
 
 	tags = append(tags, profile.StaticTags...)
 
+	fetchTime := report.TimeNow()
 	valuesStore, err := fetch.Fetch(sess, d.profileCache.scalarOIDs, d.profileCache.columnOIDs,
 		d.oidBatchSizeOptimizers, d.config.BulkMaxRepetitions)
+	if valuesStore != nil {
+		valuesStore.FetchTime = fetchTime
+	}
 	if log.ShouldLog(log.TraceLvl) {
 		log.Tracef("fetched values: %v", valuestore.ResultValueStoreAsString(valuesStore))
 	}

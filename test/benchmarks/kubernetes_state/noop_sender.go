@@ -46,6 +46,7 @@ func (*noopSender) OpenmetricsBucket(string, int64, float64, float64, bool, stri
 func (*noopSender) HistogramBucket(string, int64, float64, float64, bool, string, []string, bool)   {}
 func (*noopSender) GaugeWithTimestamp(string, float64, string, []string, float64) error             { return nil }
 func (*noopSender) CountWithTimestamp(string, float64, string, []string, float64) error             { return nil }
+func (*noopSender) RateWithTimestamp(string, float64, string, []string, float64) error              { return nil }
 func (*noopSender) Event(event.Event)                                                               {}
 func (*noopSender) EventPlatformEvent([]byte, string)                                               {}
 func (*noopSender) GetSenderStats() stats.SenderStats                                               { return stats.SenderStats{} }

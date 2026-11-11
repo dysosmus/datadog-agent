@@ -145,7 +145,7 @@ func Test_interfaceBandwidthState_calculateBandwidthUsageRate(t *testing.T) {
 			}
 
 			usageName := bandwidthMetricNameToUsage[tt.symbol.Name]
-			rate, err := ms.interfaceBandwidthState.calculateBandwidthUsageRate(tt.fullIndex, usageName, ifSpeed, tt.usageValue)
+			rate, err := ms.interfaceBandwidthState.calculateBandwidthUsageRate(tt.fullIndex, usageName, ifSpeed, tt.usageValue, TimeNow().UnixNano())
 			interfaceID := fullIndex + "." + usageName
 
 			// Expect no errors
@@ -321,7 +321,7 @@ func Test_interfaceBandwidthState_calculateBandwidthUsageRate_errors(t *testing.
 			for _, symbol := range tt.symbols {
 				usageName := bandwidthMetricNameToUsage[symbol.Name]
 				interfaceID := fullIndex + "." + usageName
-				rate, err := ms.interfaceBandwidthState.calculateBandwidthUsageRate(tt.fullIndex, usageName, tt.newIfSpeed, tt.usageValue)
+				rate, err := ms.interfaceBandwidthState.calculateBandwidthUsageRate(tt.fullIndex, usageName, tt.newIfSpeed, tt.usageValue, TimeNow().UnixNano())
 
 				assert.Equal(t, tt.expectedError, err)
 				assert.Equal(t, float64(0), rate)
