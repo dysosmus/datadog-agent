@@ -16,7 +16,6 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/networkdevice/profile/profiledefinition"
 	"github.com/DataDog/datadog-agent/pkg/networkdevice/utils"
-	"github.com/DataDog/datadog-agent/pkg/snmp"
 	"github.com/DataDog/datadog-agent/pkg/snmp/snmpintegration"
 
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/checkconfig"
@@ -30,7 +29,6 @@ type MetricSender struct {
 	submittedMetrics        int
 	interfaceConfigs        []snmpintegration.InterfaceConfig
 	interfaceBandwidthState InterfaceBandwidthState
-	rateClock               *RateClock
 	// rateTimestamp is the timestamp, in seconds since epoch, of the rate samples of the current
 	// run. Zero means that the aggregator uses the submission time.
 	rateTimestamp float64
@@ -58,9 +56,8 @@ func NewMetricSender(sender sender.Sender, hostname string, interfaceConfigs []s
 // ReportMetrics reports metrics using Sender
 func (ms *MetricSender) ReportMetrics(metrics []profiledefinition.MetricsConfig, values *valuestore.ResultValueStore, tags []string, deviceID string) {
 	ms.rateTimestamp = 0
-	if ms.rateClock != nil && values != nil && !values.FetchTime.IsZero() {
-		uptime, hasUptime := scalarFloat(values, snmp.DeviceSysUptimeOid)
-		ms.rateTimestamp = ms.rateClock.Next(values.FetchTime, uptime, hasUptime)
+	if values != nil && !values.FetchTime.IsZero() {
+		ms.rateTimestamp = float64(values.FetchTime.UnixNano()) / float64(time.Second)
 	}
 
 	scalarSamples := make(map[string]MetricSample)
@@ -279,17 +276,14 @@ func (ms *MetricSender) Gauge(metric string, value float64, tags []string) {
 	ms.sender.Gauge(metric, value, ms.hostname, tags)
 }
 
-// SetRateClock sets the clock that gives the timestamp of the rate samples
-func (ms *MetricSender) SetRateClock(clock *RateClock) {
-	ms.rateClock = clock
-}
-
-// Rate wraps Sender.Rate. The sample gets the timestamp from the rate clock, see RateClock.
+// Rate wraps Sender.Rate.
+// The values are reported after the whole fetch, and the fetch duration changes from one run to
+// the next. The rate must use the time between two fetches, so the sample gets the fetch start
+// time as its timestamp.
 func (ms *MetricSender) Rate(metric string, value float64, tags []string) {
 	if ms.rateTimestamp > 0 {
-		if err := ms.sender.RateWithTimestamp(metric, value, ms.hostname, tags, ms.rateTimestamp); err == nil {
-			return
-		}
+		_ = ms.sender.RateWithTimestamp(metric, value, ms.hostname, tags, ms.rateTimestamp)
+		return
 	}
 	ms.sender.Rate(metric, value, ms.hostname, tags)
 }
@@ -310,18 +304,6 @@ func (ms *MetricSender) rateTimestampNano() int64 {
 		return int64(ms.rateTimestamp * float64(time.Second))
 	}
 	return TimeNow().UnixNano()
-}
-
-func scalarFloat(values *valuestore.ResultValueStore, oid string) (float64, bool) {
-	value, err := values.GetScalarValue(oid)
-	if err != nil {
-		return 0, false
-	}
-	f, err := value.ToFloat64()
-	if err != nil {
-		return 0, false
-	}
-	return f, true
 }
 
 // GetSubmittedMetrics returns submitted metrics count

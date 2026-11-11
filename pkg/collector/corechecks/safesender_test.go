@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/DataDog/datadog-agent/pkg/aggregator/sender"
 )
 
 func TestCloneTags(t *testing.T) {
@@ -24,4 +26,25 @@ func TestCloneTags(t *testing.T) {
 		cloned := cloneTags(nil)
 		require.Nil(t, cloned)
 	})
+}
+
+type tagRecordingSender struct {
+	sender.Sender
+	tags []string
+}
+
+func (s *tagRecordingSender) RateWithTimestamp(_ string, _ float64, _ string, tags []string, _ float64) error {
+	s.tags = tags
+	return nil
+}
+
+func TestSafeSenderRateWithTimestampClonesTags(t *testing.T) {
+	recorder := &tagRecordingSender{}
+	ss := newSafeSender(recorder)
+	tags := []string{"a:1", "b:2"}
+
+	require.NoError(t, ss.RateWithTimestamp("metric", 1, "", tags, 1))
+	tags[0] = "changed"
+
+	require.Equal(t, []string{"a:1", "b:2"}, recorder.tags)
 }

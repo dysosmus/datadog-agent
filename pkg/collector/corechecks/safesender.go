@@ -80,6 +80,11 @@ func (ss *safeSender) Historate(metric string, value float64, hostname string, t
 	ss.Sender.Historate(metric, value, hostname, cloneTags(tags))
 }
 
+// RateWithTimestamp implements sender.Sender#RateWithTimestamp.
+func (ss *safeSender) RateWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error {
+	return ss.Sender.RateWithTimestamp(metric, value, hostname, cloneTags(tags), timestamp)
+}
+
 // ServiceCheck implements sender.Sender#ServiceCheck.
 func (ss *safeSender) ServiceCheck(checkName string, status servicecheck.ServiceCheckStatus, hostname string, tags []string, message string) {
 	ss.Sender.ServiceCheck(checkName, status, hostname, cloneTags(tags), message)
