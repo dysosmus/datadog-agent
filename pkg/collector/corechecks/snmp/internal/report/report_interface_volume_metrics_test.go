@@ -8,6 +8,7 @@ package report
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/common"
 
@@ -73,6 +74,34 @@ func Test_metricSender_sendBandwidthUsageMetric(t *testing.T) {
 				// rate generated between ts 15 and 30
 				// (50 - 30) / (30 - 15)
 				{"snmp.ifBandwidthInUsage.rate", 20.0 / 15.0},
+			},
+			rateMap: interfaceRateMapWithPrevious(),
+		},
+		{
+			name:      "snmp.ifBandwidthInUsage.Rate uses the read time of the value",
+			symbols:   []profiledefinition.SymbolConfig{{OID: "1.3.6.1.2.1.31.1.1.1.6", Name: "ifHCInOctets"}},
+			fullIndex: "9",
+			tags:      []string{"abc"},
+			values: &valuestore.ResultValueStore{
+				ColumnValues: valuestore.ColumnResultValuesType{
+					// ifHCInOctets, read at ts 45
+					"1.3.6.1.2.1.31.1.1.1.6": map[string]valuestore.ResultValue{
+						"9": {
+							Value:    5000000.0,
+							ReadTime: common.MockTimeNow().Add(15 * time.Second),
+						},
+					},
+					// ifHighSpeed
+					"1.3.6.1.2.1.31.1.1.1.15": map[string]valuestore.ResultValue{
+						"9": {
+							Value: 80.0,
+						},
+					},
+				},
+			},
+			expectedMetric: []Metric{
+				// (50 - 30) / (45 - 15)
+				{"snmp.ifBandwidthInUsage.rate", 20.0 / 30.0},
 			},
 			rateMap: interfaceRateMapWithPrevious(),
 		},

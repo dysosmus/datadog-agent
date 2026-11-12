@@ -45,6 +45,9 @@ func (ibs InterfaceBandwidthState) calculateBandwidthUsageRate(fullIndex string,
 	state, ok := ibs[interfaceID]
 	// current data point has the same interface speed as last data point
 	if ok && state.ifSpeed == ifSpeed {
+		if currentTsNano <= state.previousTsNano {
+			return 0, fmt.Errorf("rate value for interface ID %s has no time difference, discarding it", interfaceID)
+		}
 		// Get time in seconds with nanosecond precision, as core agent uses for rate calculation in aggregator
 		// https://github.com/DataDog/datadog-agent/blob/ecedf4648f41193988b4727fc6f893a0dfc3991e/pkg/aggregator/aggregator.go#L96
 		currentTs := float64(currentTsNano) / float64(time.Second)

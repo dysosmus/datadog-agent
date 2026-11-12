@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/networkdevice/profile/profiledefinition"
 
@@ -19,6 +20,8 @@ import (
 type ResultValue struct {
 	SubmissionType profiledefinition.ProfileMetricType `json:"sub_type,omitempty"` // used when sending the metric
 	Value          interface{}                         `json:"value"`              // might be a `string`, `[]byte` or `float64` type
+	// ReadTime is when the device response with this value arrived. Zero means unknown.
+	ReadTime time.Time `json:"-"`
 }
 
 // ToFloat64 converts value to float64
@@ -55,7 +58,7 @@ func (sv ResultValue) ExtractStringValue(extractValuePattern *regexp.Regexp) (Re
 			return ResultValue{}, fmt.Errorf("extract value pattern des not contain any matching group (extractValuePattern=%v, srcValue=%v)", extractValuePattern, srcValue)
 		}
 		matchedValue := matches[1] // use first matching group
-		return ResultValue{SubmissionType: sv.SubmissionType, Value: matchedValue}, nil
+		return ResultValue{SubmissionType: sv.SubmissionType, Value: matchedValue, ReadTime: sv.ReadTime}, nil
 	default:
 		return sv, nil
 	}

@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -779,4 +780,36 @@ func Test_metricSender_getCheckInstanceMetricTags(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSendMetric_rateUsesReadTime(t *testing.T) {
+	readTime := time.Date(2026, 11, 12, 10, 0, 3, 0, time.UTC)
+	readTs := float64(readTime.UnixNano()) / float64(time.Second)
+	tags := []string{"interface:et-0/0/0"}
+
+	sender := mocksender.NewMockSender(t, "foo")
+	sender.SetupAcceptAll()
+	ms := &MetricSender{sender: sender}
+
+	ms.sendMetric(MetricSample{
+		value:  valuestore.ResultValue{SubmissionType: profiledefinition.ProfileMetricTypeCounter, Value: float64(10), ReadTime: readTime},
+		tags:   tags,
+		symbol: profiledefinition.SymbolConfig{Name: "counter"},
+	})
+	ms.sendMetric(MetricSample{
+		value:      valuestore.ResultValue{Value: float64(20), ReadTime: readTime},
+		tags:       tags,
+		symbol:     profiledefinition.SymbolConfig{Name: "octets"},
+		forcedType: profiledefinition.ProfileMetricTypeMonotonicCountAndRate,
+	})
+	ms.sendMetric(MetricSample{
+		value:  valuestore.ResultValue{SubmissionType: profiledefinition.ProfileMetricTypeCounter, Value: float64(30)},
+		tags:   tags,
+		symbol: profiledefinition.SymbolConfig{Name: "unknown.read.time"},
+	})
+
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.counter", 10, "", tags, readTs)
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.octets.rate", 20, "", tags, readTs)
+	sender.AssertMetric(t, "MonotonicCount", "snmp.octets", 20, "", tags)
+	sender.AssertMetric(t, "Rate", "snmp.unknown.read.time", 30, "", tags)
 }

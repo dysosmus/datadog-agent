@@ -28,6 +28,7 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/common"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/devicecheck"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/discovery"
+	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/fetch"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/profile"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/report"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/session"
@@ -373,6 +374,8 @@ func Test_Run_customIfSpeed(t *testing.T) {
 	testDir := t.TempDir()
 	cfg.SetInTest("run_path", testDir)
 	report.TimeNow = common.MockTimeNow
+	fetch.TimeNow = common.MockTimeNow
+	t.Cleanup(func() { fetch.TimeNow = time.Now })
 	deps := createDeps(t)
 	profile.SetConfdPathAndCleanProfiles()
 	sess := session.CreateMockSession()
@@ -518,6 +521,8 @@ metrics:
 
 func TestSupportedMetricTypes(t *testing.T) {
 	report.TimeNow = common.MockTimeNow
+	fetch.TimeNow = common.MockTimeNow
+	t.Cleanup(func() { fetch.TimeNow = time.Now })
 	mockConfig := configmock.New(t)
 	testDir := t.TempDir()
 	mockConfig.SetInTest("run_path", testDir)

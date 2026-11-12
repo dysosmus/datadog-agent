@@ -75,7 +75,7 @@ func processValueUsingSymbolConfig(value valuestore.ResultValue, symbol profiled
 			if replacedVal == "" {
 				return valuestore.ResultValue{}, fmt.Errorf("the pattern `%v` matched value `%v`, but template `%s` is not compatible", symbol.MatchPattern, strValue, symbol.MatchValue)
 			}
-			value = valuestore.ResultValue{Value: replacedVal}
+			value = valuestore.ResultValue{Value: replacedVal, ReadTime: value.ReadTime}
 		} else {
 			return valuestore.ResultValue{}, fmt.Errorf("match pattern `%v` does not match string `%s`", symbol.MatchPattern, strValue)
 		}

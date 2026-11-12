@@ -334,3 +334,12 @@ func Test_interfaceBandwidthState_calculateBandwidthUsageRate_errors(t *testing.
 		})
 	}
 }
+
+func Test_interfaceBandwidthState_calculateBandwidthUsageRate_noTimeDifference(t *testing.T) {
+	ibs := interfaceRateMapWithPrevious()
+
+	rate, err := ibs.calculateBandwidthUsageRate(fullIndex, "ifBandwidthInUsage", ifSpeed, 50, mockTimeNowNano15SecEarlier)
+
+	assert.EqualError(t, err, "rate value for interface ID 9.ifBandwidthInUsage has no time difference, discarding it")
+	assert.Equal(t, float64(0), rate)
+}

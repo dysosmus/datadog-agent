@@ -418,12 +418,8 @@ func (d *DeviceCheck) getValuesAndTags(sess session.Session, deviceReachable boo
 
 	tags = append(tags, profile.StaticTags...)
 
-	fetchTime := report.TimeNow()
 	valuesStore, err := fetch.Fetch(sess, d.profileCache.scalarOIDs, d.profileCache.columnOIDs,
 		d.oidBatchSizeOptimizers, d.config.BulkMaxRepetitions)
-	if valuesStore != nil {
-		valuesStore.FetchTime = fetchTime
-	}
 	if log.ShouldLog(log.TraceLvl) {
 		log.Tracef("fetched values: %v", valuestore.ResultValueStoreAsString(valuesStore))
 	}

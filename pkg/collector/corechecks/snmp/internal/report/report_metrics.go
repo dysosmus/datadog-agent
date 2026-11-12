@@ -29,9 +29,6 @@ type MetricSender struct {
 	submittedMetrics        int
 	interfaceConfigs        []snmpintegration.InterfaceConfig
 	interfaceBandwidthState InterfaceBandwidthState
-	// rateTimestamp is the timestamp, in seconds since epoch, of the rate samples of the current
-	// run. Zero means that the aggregator uses the submission time.
-	rateTimestamp float64
 }
 
 // MetricSample is a collected metric sample with its metadata, ready to be submitted through the metric sender
@@ -55,11 +52,6 @@ func NewMetricSender(sender sender.Sender, hostname string, interfaceConfigs []s
 
 // ReportMetrics reports metrics using Sender
 func (ms *MetricSender) ReportMetrics(metrics []profiledefinition.MetricsConfig, values *valuestore.ResultValueStore, tags []string, deviceID string) {
-	ms.rateTimestamp = 0
-	if values != nil && !values.FetchTime.IsZero() {
-		ms.rateTimestamp = float64(values.FetchTime.UnixNano()) / float64(time.Second)
-	}
-
 	scalarSamples := make(map[string]MetricSample)
 	columnSamples := make(map[string]map[string]MetricSample)
 
@@ -253,17 +245,17 @@ func (ms *MetricSender) sendMetric(metricSample MetricSample) {
 		ms.Gauge(metricFullName, floatValue, metricSample.tags)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypeCounter, profiledefinition.ProfileMetricTypeRate:
-		ms.Rate(metricFullName, floatValue, metricSample.tags)
+		ms.rate(metricFullName, floatValue, metricSample.tags, metricSample.value.ReadTime)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypePercent:
-		ms.Rate(metricFullName, floatValue*100, metricSample.tags)
+		ms.rate(metricFullName, floatValue*100, metricSample.tags, metricSample.value.ReadTime)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypeMonotonicCount:
 		ms.MonotonicCount(metricFullName, floatValue, metricSample.tags)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypeMonotonicCountAndRate:
 		ms.MonotonicCount(metricFullName, floatValue, metricSample.tags)
-		ms.Rate(metricFullName+".rate", floatValue, metricSample.tags)
+		ms.rate(metricFullName+".rate", floatValue, metricSample.tags, metricSample.value.ReadTime)
 		ms.submittedMetrics += 2
 	default:
 		log.Debugf("metric `%s`: unsupported forcedType: %s", metricFullName, forcedType)
@@ -276,16 +268,22 @@ func (ms *MetricSender) Gauge(metric string, value float64, tags []string) {
 	ms.sender.Gauge(metric, value, ms.hostname, tags)
 }
 
-// Rate wraps Sender.Rate.
-// The values are reported after the whole fetch, and the fetch duration changes from one run to
-// the next. The rate must use the time between two fetches, so the sample gets the fetch start
-// time as its timestamp.
+// Rate wraps Sender.Rate
 func (ms *MetricSender) Rate(metric string, value float64, tags []string) {
-	if ms.rateTimestamp > 0 {
-		_ = ms.sender.RateWithTimestamp(metric, value, ms.hostname, tags, ms.rateTimestamp)
+	ms.sender.Rate(metric, value, ms.hostname, tags)
+}
+
+// rate sends a rate sample dated at readTime. The aggregator divides by the time between two
+// samples, and the time from the read to the report changes from one run to the next.
+func (ms *MetricSender) rate(metric string, value float64, tags []string, readTime time.Time) {
+	if readTime.IsZero() {
+		ms.Rate(metric, value, tags)
 		return
 	}
-	ms.sender.Rate(metric, value, ms.hostname, tags)
+	ts := float64(readTime.UnixNano()) / float64(time.Second)
+	if err := ms.sender.RateWithTimestamp(metric, value, ms.hostname, tags, ts); err != nil {
+		log.Debugf("metric `%s`: failed to send rate: %s", metric, err)
+	}
 }
 
 // MonotonicCount wraps Sender.MonotonicCount
@@ -296,14 +294,6 @@ func (ms *MetricSender) MonotonicCount(metric string, value float64, tags []stri
 // ServiceCheck wraps Sender.ServiceCheck
 func (ms *MetricSender) ServiceCheck(CheckName string, status servicecheck.ServiceCheckStatus, tags []string, message string) {
 	ms.sender.ServiceCheck(CheckName, status, ms.hostname, tags, message)
-}
-
-// rateTimestampNano returns the timestamp of the rate samples in nanoseconds since epoch
-func (ms *MetricSender) rateTimestampNano() int64 {
-	if ms.rateTimestamp > 0 {
-		return int64(ms.rateTimestamp * float64(time.Second))
-	}
-	return TimeNow().UnixNano()
 }
 
 // GetSubmittedMetrics returns submitted metrics count
