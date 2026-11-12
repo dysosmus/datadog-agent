@@ -44,6 +44,7 @@ type Sender interface {
 	// RateWithTimestamp reports a rate sample that was taken at the given timestamp.
 	// Use it when the value was read some time before the check submits it, so that the rate
 	// uses the time between two reads and not the time between two submissions.
+	// Unlike GaugeWithTimestamp() and CountWithTimestamp(), the value is aggregated like Rate().
 	// The timestamp is in seconds since epoch (accepts fractional seconds)
 	RateWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error
 	Event(e event.Event)

@@ -1754,3 +1754,51 @@ func Test_fetchScalarOids_readTime(t *testing.T) {
 
 	assert.Equal(t, readTime, values["1.1.1.0"].ReadTime)
 }
+
+func Test_Fetch_readTimeWithGetNextFallback(t *testing.T) {
+	start := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	now := start
+	TimeNow = func() time.Time { return now }
+	t.Cleanup(func() { TimeNow = func() time.Time { return time.Time{} } })
+
+	sess := session.CreateMockSession()
+	sess.On("GetBulk", []string{"1.1.1"}, checkconfig.DefaultBulkMaxRepetitions).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.1.1", Type: gosnmp.Counter64, Value: uint64(11)}},
+	}, nil)
+	sess.On("GetBulk", []string{"1.1.1.1"}, checkconfig.DefaultBulkMaxRepetitions).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.2.1", Type: gosnmp.Counter64, Value: uint64(21)}},
+	}, nil)
+	sess.On("GetBulk", []string{"1.1.2"}, checkconfig.DefaultBulkMaxRepetitions).Return(&gosnmp.SnmpPacket{}, errors.New("request timeout (after 3 retries)"))
+	sess.On("GetNext", []string{"1.1.2"}).
+		Run(func(_ mock.Arguments) { now = start.Add(8 * time.Second) }).
+		Return(&gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{{Name: "1.1.2.1", Type: gosnmp.Counter64, Value: uint64(21)}}}, nil)
+	sess.On("GetNext", []string{"1.1.2.1"}).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.9.1", Type: gosnmp.Counter64, Value: uint64(91)}},
+	}, nil)
+
+	values, err := Fetch(sess, nil, []string{"1.1.1", "1.1.2"}, NewOidBatchSizeOptimizers(1), checkconfig.DefaultBulkMaxRepetitions)
+	require.NoError(t, err)
+
+	assert.Equal(t, start, values.ColumnValues["1.1.1"]["1"].ReadTime)
+	assert.Equal(t, start.Add(8*time.Second), values.ColumnValues["1.1.2"]["1"].ReadTime)
+}
+
+func Test_fetchScalarOids_readTimeOfRetry(t *testing.T) {
+	start := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	now := start
+	TimeNow = func() time.Time { return now }
+	t.Cleanup(func() { TimeNow = func() time.Time { return time.Time{} } })
+
+	sess := session.CreateMockSession()
+	sess.On("Get", []string{"1.1.1"}).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.1", Type: gosnmp.NoSuchObject}},
+	}, nil)
+	sess.On("Get", []string{"1.1.1.0"}).
+		Run(func(_ mock.Arguments) { now = start.Add(5 * time.Second) }).
+		Return(&gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{{Name: "1.1.1.0", Type: gosnmp.Counter32, Value: uint(10)}}}, nil)
+
+	values, err := fetchScalarOids(sess, []string{"1.1.1"})
+	require.NoError(t, err)
+
+	assert.Equal(t, start.Add(5*time.Second), values["1.1.1"].ReadTime)
+}

@@ -132,6 +132,24 @@ func TestSenderCommitWritesScalarMetricBatch(t *testing.T) {
 	assert.Equal(t, int64(0), lookbackSender.GetSenderStats().MetricSamples)
 }
 
+func TestSenderRateWithTimestamp(t *testing.T) {
+	writer := &recordingWriter{}
+	manager := NewSenderManager(context.Background(), "default-host", writer, func() float64 { return 42 })
+
+	gotSender, err := manager.GetSender(checkid.ID("cpu:shadow"))
+	require.NoError(t, err)
+	lookbackSender := gotSender.(*sender)
+
+	require.NoError(t, lookbackSender.RateWithTimestamp("metric.rate", 3, "", nil, 123))
+	lookbackSender.Commit()
+
+	appends := writer.snapshots()
+	require.Len(t, appends, 1)
+	require.Len(t, appends[0].samples, 1)
+	assert.Equal(t, metrics.RateType, appends[0].samples[0].Mtype)
+	assert.EqualValues(t, 123, appends[0].samples[0].Timestamp)
+}
+
 func TestSenderCopiesTagsBeforeBuffering(t *testing.T) {
 	writer := &recordingWriter{}
 	manager := NewSenderManager(context.Background(), "default-host", writer, func() float64 { return 42 })
@@ -198,6 +216,7 @@ func TestSenderDropsUnsupportedPayloadsAndRejectsInvalidTimestamps(t *testing.T)
 	lookbackSender.EventPlatformEvent([]byte(`{}`), "event-type")
 	assert.Error(t, lookbackSender.GaugeWithTimestamp("metric.gauge", 1, "", nil, 0))
 	assert.Error(t, lookbackSender.CountWithTimestamp("metric.count", 1, "", nil, -1))
+	assert.Error(t, lookbackSender.RateWithTimestamp("metric.rate", 1, "", nil, 0))
 	lookbackSender.Commit()
 
 	assert.Empty(t, writer.snapshots())

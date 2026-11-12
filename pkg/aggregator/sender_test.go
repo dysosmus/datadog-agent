@@ -811,3 +811,20 @@ func TestSenderGaugeWithTimestampValidation(t *testing.T) {
 	assert.Error(t, err)
 	assert.Len(t, s.itemChan, 0)
 }
+
+func TestSenderRateWithTimestamp(t *testing.T) {
+	s := initSender(checkID1, "")
+
+	err := s.sender.RateWithTimestamp("my.rate_with_timestamp", 42, "my-hostname", nil, 1000)
+	assert.NoError(t, err)
+	metricSample := (<-s.itemChan).(*senderMetricSample)
+	assert.EqualValues(t, 42, metricSample.metricSample.Value)
+	assert.Equal(t, metrics.RateType, metricSample.metricSample.Mtype)
+	assert.EqualValues(t, 1000, metricSample.metricSample.Timestamp)
+
+	err = s.sender.RateWithTimestamp("my.rate_with_timestamp", 42, "my-hostname", nil, 0)
+	assert.Error(t, err)
+	err = s.sender.RateWithTimestamp("my.rate_with_timestamp", 42, "my-hostname", nil, -10000)
+	assert.Error(t, err)
+	assert.Len(t, s.itemChan, 0)
+}

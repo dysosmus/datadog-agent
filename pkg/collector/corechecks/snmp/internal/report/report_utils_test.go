@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"go.yaml.in/yaml/v3"
@@ -1179,4 +1180,17 @@ func Test_isInterfaceTableMetric(t *testing.T) {
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
+}
+
+func Test_processValueUsingSymbolConfig_keepsReadTime(t *testing.T) {
+	readTime := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	value := valuestore.ResultValue{Value: []byte("value42"), ReadTime: readTime}
+
+	extracted, err := processValueUsingSymbolConfig(value, profiledefinition.SymbolConfig{ExtractValueCompiled: regexp.MustCompile(`value(\d+)`)})
+	assert.NoError(t, err)
+	assert.Equal(t, readTime, extracted.ReadTime)
+
+	matched, err := processValueUsingSymbolConfig(value, profiledefinition.SymbolConfig{MatchPatternCompiled: regexp.MustCompile(`value(\d+)`)})
+	assert.NoError(t, err)
+	assert.Equal(t, readTime, matched.ReadTime)
 }

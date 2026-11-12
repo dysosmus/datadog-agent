@@ -46,6 +46,9 @@ func (ibs InterfaceBandwidthState) calculateBandwidthUsageRate(fullIndex string,
 	// current data point has the same interface speed as last data point
 	if ok && state.ifSpeed == ifSpeed {
 		if currentTsNano <= state.previousTsNano {
+			// Keep this sample, so that the next run gives a rate after the clock moves back.
+			state.previousSample = usageValue
+			state.previousTsNano = currentTsNano
 			return 0, fmt.Errorf("rate value for interface ID %s has no time difference, discarding it", interfaceID)
 		}
 		// Get time in seconds with nanosecond precision, as core agent uses for rate calculation in aggregator

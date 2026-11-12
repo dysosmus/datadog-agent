@@ -803,6 +803,12 @@ func TestSendMetric_rateUsesReadTime(t *testing.T) {
 		forcedType: profiledefinition.ProfileMetricTypeMonotonicCountAndRate,
 	})
 	ms.sendMetric(MetricSample{
+		value:      valuestore.ResultValue{Value: float64(0.5), ReadTime: readTime},
+		tags:       tags,
+		symbol:     profiledefinition.SymbolConfig{Name: "ratio"},
+		forcedType: profiledefinition.ProfileMetricTypePercent,
+	})
+	ms.sendMetric(MetricSample{
 		value:  valuestore.ResultValue{SubmissionType: profiledefinition.ProfileMetricTypeCounter, Value: float64(30)},
 		tags:   tags,
 		symbol: profiledefinition.SymbolConfig{Name: "unknown.read.time"},
@@ -811,5 +817,6 @@ func TestSendMetric_rateUsesReadTime(t *testing.T) {
 	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.counter", 10, "", tags, readTs)
 	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.octets.rate", 20, "", tags, readTs)
 	sender.AssertMetric(t, "MonotonicCount", "snmp.octets", 20, "", tags)
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.ratio", 50, "", tags, readTs)
 	sender.AssertMetric(t, "Rate", "snmp.unknown.read.time", 30, "", tags)
 }

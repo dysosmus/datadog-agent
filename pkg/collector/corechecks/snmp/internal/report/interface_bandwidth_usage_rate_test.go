@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"testing"
+	"time"
 )
 
 func Test_interfaceBandwidthState_RemoveExpiredBandwidthUsageRates(t *testing.T) {
@@ -342,4 +343,18 @@ func Test_interfaceBandwidthState_calculateBandwidthUsageRate_noTimeDifference(t
 
 	assert.EqualError(t, err, "rate value for interface ID 9.ifBandwidthInUsage has no time difference, discarding it")
 	assert.Equal(t, float64(0), rate)
+	assert.Equal(t, float64(50), ibs["9.ifBandwidthInUsage"].previousSample)
+	assert.Equal(t, mockTimeNowNano15SecEarlier, ibs["9.ifBandwidthInUsage"].previousTsNano)
+}
+
+func Test_interfaceBandwidthState_calculateBandwidthUsageRate_clockMovesBack(t *testing.T) {
+	ibs := interfaceRateMapWithPrevious()
+	hourEarlier := mockTimeNowNano15SecEarlier - int64(time.Hour)
+
+	_, err := ibs.calculateBandwidthUsageRate(fullIndex, "ifBandwidthInUsage", ifSpeed, 50, hourEarlier)
+	assert.Error(t, err)
+
+	rate, err := ibs.calculateBandwidthUsageRate(fullIndex, "ifBandwidthInUsage", ifSpeed, 80, hourEarlier+int64(15*time.Second))
+	assert.NoError(t, err)
+	assert.Equal(t, float64(2), rate)
 }

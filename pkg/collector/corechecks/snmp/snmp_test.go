@@ -375,7 +375,10 @@ func Test_Run_customIfSpeed(t *testing.T) {
 	cfg.SetInTest("run_path", testDir)
 	report.TimeNow = common.MockTimeNow
 	fetch.TimeNow = common.MockTimeNow
-	t.Cleanup(func() { fetch.TimeNow = time.Now })
+	t.Cleanup(func() {
+		report.TimeNow = time.Now
+		fetch.TimeNow = time.Now
+	})
 	deps := createDeps(t)
 	profile.SetConfdPathAndCleanProfiles()
 	sess := session.CreateMockSession()
@@ -522,7 +525,10 @@ metrics:
 func TestSupportedMetricTypes(t *testing.T) {
 	report.TimeNow = common.MockTimeNow
 	fetch.TimeNow = common.MockTimeNow
-	t.Cleanup(func() { fetch.TimeNow = time.Now })
+	t.Cleanup(func() {
+		report.TimeNow = time.Now
+		fetch.TimeNow = time.Now
+	})
 	mockConfig := configmock.New(t)
 	testDir := t.TempDir()
 	mockConfig.SetInTest("run_path", testDir)
