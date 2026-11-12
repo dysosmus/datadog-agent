@@ -103,7 +103,7 @@ func (m *MockSender) SetupAcceptAll() {
 		mock.AnythingOfType("[]string"), // Tags
 		mock.AnythingOfType("bool"),     // FlushFirstValue
 	).Return()
-	metricWithTimestampCalls := []string{"GaugeWithTimestamp", "CountWithTimestamp"}
+	metricWithTimestampCalls := []string{"GaugeWithTimestamp", "CountWithTimestamp", "RateWithTimestamp"}
 	for _, call := range metricWithTimestampCalls {
 		m.On(call,
 			mock.AnythingOfType("string"),   // Metric

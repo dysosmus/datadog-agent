@@ -305,6 +305,14 @@ func (s *sender) GaugeWithTimestamp(metric string, value float64, hostname strin
 	return nil
 }
 
+func (s *sender) RateWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error {
+	if timestamp <= 0 {
+		return errors.New("invalid timestamp")
+	}
+	s.appendScalarSample(metric, value, hostname, tags, metrics.RateType, false, false, timestamp)
+	return nil
+}
+
 func (s *sender) CountWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error {
 	if timestamp <= 0 {
 		return errors.New("invalid timestamp")
@@ -388,6 +396,13 @@ func (n *noopSender) HistogramBucket(_ string, _ int64, _, _ float64, _ bool, _ 
 }
 
 func (n *noopSender) GaugeWithTimestamp(_ string, _ float64, _ string, _ []string, timestamp float64) error {
+	if timestamp <= 0 {
+		return errors.New("invalid timestamp")
+	}
+	return nil
+}
+
+func (n *noopSender) RateWithTimestamp(_ string, _ float64, _ string, _ []string, timestamp float64) error {
 	if timestamp <= 0 {
 		return errors.New("invalid timestamp")
 	}

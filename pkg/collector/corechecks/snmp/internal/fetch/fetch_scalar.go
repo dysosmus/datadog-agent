@@ -59,7 +59,7 @@ func fetchScalarOids(sess session.Session, oids []string) (valuestore.ScalarResu
 	if err != nil {
 		return nil, err
 	}
-	values := valuestore.ResultToScalarValues(packet)
+	values := valuestore.ResultToScalarValues(packet, TimeNow())
 	retryFailedScalarOids(sess, packet, values)
 	return values, nil
 }
@@ -86,7 +86,7 @@ func retryFailedScalarOids(sess session.Session, results *gosnmp.SnmpPacket, val
 		if err != nil {
 			log.Debugf("failed to oids `%v` on retry: %v", retryOids, err)
 		} else {
-			retryValues := valuestore.ResultToScalarValues(retryResults)
+			retryValues := valuestore.ResultToScalarValues(retryResults, TimeNow())
 			for initialOid, actualOid := range retryOids {
 				if value, ok := retryValues[actualOid]; ok {
 					valuesToUpdate[initialOid] = value

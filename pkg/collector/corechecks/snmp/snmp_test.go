@@ -28,6 +28,7 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/common"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/devicecheck"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/discovery"
+	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/fetch"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/profile"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/report"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/session"
@@ -373,6 +374,11 @@ func Test_Run_customIfSpeed(t *testing.T) {
 	testDir := t.TempDir()
 	cfg.SetInTest("run_path", testDir)
 	report.TimeNow = common.MockTimeNow
+	fetch.TimeNow = common.MockTimeNow
+	t.Cleanup(func() {
+		report.TimeNow = time.Now
+		fetch.TimeNow = time.Now
+	})
 	deps := createDeps(t)
 	profile.SetConfdPathAndCleanProfiles()
 	sess := session.CreateMockSession()
@@ -499,9 +505,10 @@ metrics:
 	sender.AssertMetric(t, "Gauge", "snmp.ifOutSpeed", float64(40_000_000), "", tags)
 
 	sender.AssertMetric(t, "MonotonicCount", "snmp.ifHCInOctets", float64(2_000_000), "", tags)
-	sender.AssertMetric(t, "Rate", "snmp.ifHCInOctets.rate", float64(2_000_000), "", tags)
+	rateTs := float64(common.MockTimeNow().UnixNano()) / float64(time.Second)
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.ifHCInOctets.rate", float64(2_000_000), "", tags, rateTs)
 	sender.AssertMetric(t, "MonotonicCount", "snmp.ifHCOutOctets", float64(1_000_000), "", tags)
-	sender.AssertMetric(t, "Rate", "snmp.ifHCOutOctets.rate", float64(1_000_000), "", tags)
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.ifHCOutOctets.rate", float64(1_000_000), "", tags, rateTs)
 
 	// ((2000000 * 8) / (50 * 1000000)) * 100 = 32
 	//   ^ifHCInOctets   ^custom in_speed
@@ -516,6 +523,12 @@ metrics:
 }
 
 func TestSupportedMetricTypes(t *testing.T) {
+	report.TimeNow = common.MockTimeNow
+	fetch.TimeNow = common.MockTimeNow
+	t.Cleanup(func() {
+		report.TimeNow = time.Now
+		fetch.TimeNow = time.Now
+	})
 	mockConfig := configmock.New(t)
 	testDir := t.TempDir()
 	mockConfig.SetInTest("run_path", testDir)
@@ -550,6 +563,7 @@ metrics:
 	sender.On("MonotonicCount", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	sender.On("Rate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
 	sender.On("ServiceCheck", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return()
+	sender.On("RateWithTimestamp", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	sender.On("Commit").Return()
 
 	packet := gosnmp.SnmpPacket{
@@ -587,8 +601,8 @@ metrics:
 	sender.AssertMetric(t, "Gauge", "snmp.devices_monitored", float64(1), "", tags)
 	sender.AssertMetric(t, "Gauge", "snmp.sysUpTimeInstance", float64(20), "", tags)
 	sender.AssertMetric(t, "Gauge", "snmp.SomeGaugeMetric", float64(30), "", tags)
-	sender.AssertMetric(t, "Rate", "snmp.SomeCounter32Metric", float64(40), "", tags)
-	sender.AssertMetric(t, "Rate", "snmp.SomeCounter64Metric", float64(50), "", tags)
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.SomeCounter32Metric", float64(40), "", tags, float64(common.MockTimeNow().UnixNano())/float64(time.Second))
+	sender.AssertMetricWithTimestamp(t, "RateWithTimestamp", "snmp.SomeCounter64Metric", float64(50), "", tags, float64(common.MockTimeNow().UnixNano())/float64(time.Second))
 }
 
 func TestProfile(t *testing.T) {

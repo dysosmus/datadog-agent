@@ -19,6 +19,9 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/valuestore"
 )
 
+// TimeNow gives the read time of the fetched values. Tests replace it.
+var TimeNow = time.Now
+
 type columnFetchStrategy int
 
 const (

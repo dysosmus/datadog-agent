@@ -251,6 +251,16 @@ func (s *checkSender) Rate(metric string, value float64, hostname string, tags [
 	s.sendMetricSample(metric, value, hostname, tags, metrics.RateType, false, false, 0)
 }
 
+// RateWithTimestamp reports a rate sample that was taken at the given timestamp.
+// The timestamp is in seconds since epoch (accepts fractional seconds)
+func (s *checkSender) RateWithTimestamp(metric string, value float64, hostname string, tags []string, timestamp float64) error {
+	if timestamp <= 0 {
+		return errors.New("invalid timestamp")
+	}
+	s.sendMetricSample(metric, value, hostname, tags, metrics.RateType, false, false, timestamp)
+	return nil
+}
+
 // Count should be used to count a number of events that occurred during the check run
 func (s *checkSender) Count(metric string, value float64, hostname string, tags []string) {
 	s.sendMetricSample(metric, value, hostname, tags, metrics.CountType, false, false, 0)

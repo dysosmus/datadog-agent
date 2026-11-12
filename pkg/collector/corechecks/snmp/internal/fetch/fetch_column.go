@@ -101,7 +101,7 @@ func fetchColumnOids(sess session.Session, oids []string, bulkMaxRepetitions uin
 		if err != nil {
 			return nil, err
 		}
-		newValues, nextOids := valuestore.ResultToColumnValues(columnOids, results)
+		newValues, nextOids := valuestore.ResultToColumnValues(columnOids, results, TimeNow())
 		updateColumnResultValues(returnValues, newValues)
 		curOids = nextOids
 	}

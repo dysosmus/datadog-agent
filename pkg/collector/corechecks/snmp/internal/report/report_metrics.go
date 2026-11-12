@@ -8,6 +8,7 @@ package report
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/DataDog/datadog-agent/pkg/aggregator/sender"
 	"github.com/DataDog/datadog-agent/pkg/metrics/servicecheck"
@@ -244,17 +245,17 @@ func (ms *MetricSender) sendMetric(metricSample MetricSample) {
 		ms.Gauge(metricFullName, floatValue, metricSample.tags)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypeCounter, profiledefinition.ProfileMetricTypeRate:
-		ms.Rate(metricFullName, floatValue, metricSample.tags)
+		ms.rate(metricFullName, floatValue, metricSample.tags, metricSample.value.ReadTime)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypePercent:
-		ms.Rate(metricFullName, floatValue*100, metricSample.tags)
+		ms.rate(metricFullName, floatValue*100, metricSample.tags, metricSample.value.ReadTime)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypeMonotonicCount:
 		ms.MonotonicCount(metricFullName, floatValue, metricSample.tags)
 		ms.submittedMetrics++
 	case profiledefinition.ProfileMetricTypeMonotonicCountAndRate:
 		ms.MonotonicCount(metricFullName, floatValue, metricSample.tags)
-		ms.Rate(metricFullName+".rate", floatValue, metricSample.tags)
+		ms.rate(metricFullName+".rate", floatValue, metricSample.tags, metricSample.value.ReadTime)
 		ms.submittedMetrics += 2
 	default:
 		log.Debugf("metric `%s`: unsupported forcedType: %s", metricFullName, forcedType)
@@ -270,6 +271,19 @@ func (ms *MetricSender) Gauge(metric string, value float64, tags []string) {
 // Rate wraps Sender.Rate
 func (ms *MetricSender) Rate(metric string, value float64, tags []string) {
 	ms.sender.Rate(metric, value, ms.hostname, tags)
+}
+
+// rate sends a rate sample dated at readTime. The aggregator divides by the time between two
+// samples, and the time from the read to the report changes from one run to the next.
+func (ms *MetricSender) rate(metric string, value float64, tags []string, readTime time.Time) {
+	if readTime.IsZero() {
+		ms.Rate(metric, value, tags)
+		return
+	}
+	ts := float64(readTime.UnixNano()) / float64(time.Second)
+	if err := ms.sender.RateWithTimestamp(metric, value, ms.hostname, tags, ts); err != nil {
+		log.Debugf("metric `%s`: failed to send rate: %s", metric, err)
+	}
 }
 
 // MonotonicCount wraps Sender.MonotonicCount

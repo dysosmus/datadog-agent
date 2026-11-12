@@ -40,14 +40,19 @@ func (ibs InterfaceBandwidthState) RemoveExpiredBandwidthUsageRates(timestampNan
 calculateBandwidthUsageRate is responsible for checking the state for previously seen metric sample to generate the rate from.
 If the ifSpeed has changed for the interface, the rate will not be submitted (drop the previous sample)
 */
-func (ibs InterfaceBandwidthState) calculateBandwidthUsageRate(fullIndex string, usageName string, ifSpeed uint64, usageValue float64) (float64, error) {
+func (ibs InterfaceBandwidthState) calculateBandwidthUsageRate(fullIndex string, usageName string, ifSpeed uint64, usageValue float64, currentTsNano int64) (float64, error) {
 	interfaceID := fullIndex + "." + usageName
 	state, ok := ibs[interfaceID]
 	// current data point has the same interface speed as last data point
 	if ok && state.ifSpeed == ifSpeed {
+		if currentTsNano <= state.previousTsNano {
+			// Keep this sample, so that the next run gives a rate after the clock moves back.
+			state.previousSample = usageValue
+			state.previousTsNano = currentTsNano
+			return 0, fmt.Errorf("rate value for interface ID %s has no time difference, discarding it", interfaceID)
+		}
 		// Get time in seconds with nanosecond precision, as core agent uses for rate calculation in aggregator
 		// https://github.com/DataDog/datadog-agent/blob/ecedf4648f41193988b4727fc6f893a0dfc3991e/pkg/aggregator/aggregator.go#L96
-		currentTsNano := TimeNow().UnixNano()
 		currentTs := float64(currentTsNano) / float64(time.Second)
 		prevTs := float64(state.previousTsNano) / float64(time.Second)
 
@@ -68,7 +73,7 @@ func (ibs InterfaceBandwidthState) calculateBandwidthUsageRate(fullIndex string,
 	ibs[interfaceID] = &BandwidthUsage{
 		ifSpeed:        ifSpeed,
 		previousSample: usageValue,
-		previousTsNano: TimeNow().UnixNano(),
+		previousTsNano: currentTsNano,
 	}
 	// do not send a sample to metrics, send error for ifSpeed change (previous entry conflicted)
 	if ok {

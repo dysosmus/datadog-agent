@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/DataDog/datadog-agent/pkg/util/log"
@@ -24,6 +26,12 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/session"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/snmp/internal/valuestore"
 )
+
+func TestMain(m *testing.M) {
+	// The tests compare whole values, so the read time stays zero unless a test sets a clock.
+	TimeNow = func() time.Time { return time.Time{} }
+	os.Exit(m.Run())
+}
 
 func Test_fetchColumnOids(t *testing.T) {
 	sess := session.CreateMockSession()
@@ -1698,4 +1706,99 @@ func Test_batchSizeOptimizers_areRefreshed(t *testing.T) {
 	assert.Empty(t, batchSizeOptimizers.snmpGetBulkOptimizer.failuresByBatchSize)
 	assert.Empty(t, batchSizeOptimizers.snmpGetNextOptimizer.failuresByBatchSize)
 	assert.True(t, batchSizeOptimizers.lastRefreshTs.After(oldLastRefreshTs))
+}
+
+func Test_fetchColumnOids_readTimeOfEachResponse(t *testing.T) {
+	start := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	now := start
+	TimeNow = func() time.Time { return now }
+	t.Cleanup(func() { TimeNow = func() time.Time { return time.Time{} } })
+
+	sess := session.CreateMockSession()
+	packet1 := gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{
+		{Name: "1.1.1.1", Type: gosnmp.Counter64, Value: uint64(11)},
+	}}
+	packet2 := gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{
+		{Name: "1.1.2.1", Type: gosnmp.Counter64, Value: uint64(21)},
+	}}
+	endPacket := gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{
+		{Name: "1.1.9", Type: gosnmp.EndOfMibView},
+	}}
+	// The device answers the second batch 8 seconds later, for example after a timeout and a retry.
+	sess.On("GetBulk", []string{"1.1.1"}, checkconfig.DefaultBulkMaxRepetitions).Return(&packet1, nil)
+	sess.On("GetBulk", []string{"1.1.2"}, checkconfig.DefaultBulkMaxRepetitions).
+		Run(func(_ mock.Arguments) { now = start.Add(8 * time.Second) }).Return(&packet2, nil)
+	sess.On("GetBulk", mock.Anything, checkconfig.DefaultBulkMaxRepetitions).Return(&endPacket, nil)
+
+	batchSizeOptimizer := newOidBatchSizeOptimizer(snmpGetBulk, 1)
+	columnValues, err := fetchColumnOidsWithBatching(sess, []string{"1.1.1", "1.1.2"}, batchSizeOptimizer, checkconfig.DefaultBulkMaxRepetitions, useGetBulk)
+	require.NoError(t, err)
+
+	assert.Equal(t, start, columnValues["1.1.1"]["1"].ReadTime)
+	assert.Equal(t, start.Add(8*time.Second), columnValues["1.1.2"]["1"].ReadTime)
+}
+
+func Test_fetchScalarOids_readTime(t *testing.T) {
+	readTime := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	TimeNow = func() time.Time { return readTime }
+	t.Cleanup(func() { TimeNow = func() time.Time { return time.Time{} } })
+
+	sess := session.CreateMockSession()
+	packet := gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{
+		{Name: "1.1.1.0", Type: gosnmp.Counter32, Value: uint(10)},
+	}}
+	sess.On("Get", []string{"1.1.1.0"}).Return(&packet, nil)
+
+	values, err := fetchScalarOids(sess, []string{"1.1.1.0"})
+	require.NoError(t, err)
+
+	assert.Equal(t, readTime, values["1.1.1.0"].ReadTime)
+}
+
+func Test_Fetch_readTimeWithGetNextFallback(t *testing.T) {
+	start := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	now := start
+	TimeNow = func() time.Time { return now }
+	t.Cleanup(func() { TimeNow = func() time.Time { return time.Time{} } })
+
+	sess := session.CreateMockSession()
+	sess.On("GetBulk", []string{"1.1.1"}, checkconfig.DefaultBulkMaxRepetitions).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.1.1", Type: gosnmp.Counter64, Value: uint64(11)}},
+	}, nil)
+	sess.On("GetBulk", []string{"1.1.1.1"}, checkconfig.DefaultBulkMaxRepetitions).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.2.1", Type: gosnmp.Counter64, Value: uint64(21)}},
+	}, nil)
+	sess.On("GetBulk", []string{"1.1.2"}, checkconfig.DefaultBulkMaxRepetitions).Return(&gosnmp.SnmpPacket{}, errors.New("request timeout (after 3 retries)"))
+	sess.On("GetNext", []string{"1.1.2"}).
+		Run(func(_ mock.Arguments) { now = start.Add(8 * time.Second) }).
+		Return(&gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{{Name: "1.1.2.1", Type: gosnmp.Counter64, Value: uint64(21)}}}, nil)
+	sess.On("GetNext", []string{"1.1.2.1"}).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.9.1", Type: gosnmp.Counter64, Value: uint64(91)}},
+	}, nil)
+
+	values, err := Fetch(sess, nil, []string{"1.1.1", "1.1.2"}, NewOidBatchSizeOptimizers(1), checkconfig.DefaultBulkMaxRepetitions)
+	require.NoError(t, err)
+
+	assert.Equal(t, start, values.ColumnValues["1.1.1"]["1"].ReadTime)
+	assert.Equal(t, start.Add(8*time.Second), values.ColumnValues["1.1.2"]["1"].ReadTime)
+}
+
+func Test_fetchScalarOids_readTimeOfRetry(t *testing.T) {
+	start := time.Date(2026, 11, 12, 10, 0, 0, 0, time.UTC)
+	now := start
+	TimeNow = func() time.Time { return now }
+	t.Cleanup(func() { TimeNow = func() time.Time { return time.Time{} } })
+
+	sess := session.CreateMockSession()
+	sess.On("Get", []string{"1.1.1"}).Return(&gosnmp.SnmpPacket{
+		Variables: []gosnmp.SnmpPDU{{Name: "1.1.1", Type: gosnmp.NoSuchObject}},
+	}, nil)
+	sess.On("Get", []string{"1.1.1.0"}).
+		Run(func(_ mock.Arguments) { now = start.Add(5 * time.Second) }).
+		Return(&gosnmp.SnmpPacket{Variables: []gosnmp.SnmpPDU{{Name: "1.1.1.0", Type: gosnmp.Counter32, Value: uint(10)}}}, nil)
+
+	values, err := fetchScalarOids(sess, []string{"1.1.1"})
+	require.NoError(t, err)
+
+	assert.Equal(t, start.Add(5*time.Second), values["1.1.1"].ReadTime)
 }

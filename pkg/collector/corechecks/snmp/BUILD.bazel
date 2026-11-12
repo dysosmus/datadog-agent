@@ -60,6 +60,7 @@ dd_agent_go_test(
         "//pkg/collector/corechecks/snmp/internal/common",
         "//pkg/collector/corechecks/snmp/internal/devicecheck",
         "//pkg/collector/corechecks/snmp/internal/discovery",
+        "//pkg/collector/corechecks/snmp/internal/fetch",
         "//pkg/collector/corechecks/snmp/internal/profile",
         "//pkg/collector/corechecks/snmp/internal/report",
         "//pkg/collector/corechecks/snmp/internal/session",

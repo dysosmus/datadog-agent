@@ -9,6 +9,7 @@ package valuestore
 import (
 	"math"
 	"strings"
+	"time"
 
 	"github.com/gosnmp/gosnmp"
 
@@ -34,8 +35,8 @@ func GetResultValueFromPDU(pduVariable gosnmp.SnmpPDU) (string, ResultValue, err
 	return name, ResultValue{SubmissionType: submissionType, Value: value}, nil
 }
 
-// ResultToScalarValues converts result to scalar values
-func ResultToScalarValues(result *gosnmp.SnmpPacket) ScalarResultValuesType {
+// ResultToScalarValues converts result to scalar values, read at readTime
+func ResultToScalarValues(result *gosnmp.SnmpPacket, readTime time.Time) ScalarResultValuesType {
 	returnValues := make(map[string]ResultValue, len(result.Variables))
 	for _, pduVariable := range result.Variables {
 		if shouldSkip(pduVariable.Type) {
@@ -46,6 +47,7 @@ func ResultToScalarValues(result *gosnmp.SnmpPacket) ScalarResultValuesType {
 			log.Debugf("cannot get value for variable `%v` with type `%v` and value `%v`", pduVariable.Name, pduVariable.Type, pduVariable.Value)
 			continue
 		}
+		value.ReadTime = readTime
 		returnValues[name] = value
 	}
 	return returnValues
@@ -54,7 +56,9 @@ func ResultToScalarValues(result *gosnmp.SnmpPacket) ScalarResultValuesType {
 // ResultToColumnValues builds column values
 // - ColumnResultValuesType: column values
 // - nextOidsMap: represent the oids that can be used to retrieve following rows/values
-func ResultToColumnValues(columnOids []string, snmpPacket *gosnmp.SnmpPacket) (ColumnResultValuesType, map[string]string) {
+//
+// All values get readTime as their read time.
+func ResultToColumnValues(columnOids []string, snmpPacket *gosnmp.SnmpPacket, readTime time.Time) (ColumnResultValuesType, map[string]string) {
 	returnValues := make(ColumnResultValuesType, len(columnOids))
 	nextOidsMap := make(map[string]string, len(columnOids))
 	maxRowsPerCol := int(math.Ceil(float64(len(snmpPacket.Variables)) / float64(len(columnOids))))
@@ -78,6 +82,7 @@ func ResultToColumnValues(columnOids []string, snmpPacket *gosnmp.SnmpPacket) (C
 		prefix := columnOid + "."
 		if strings.HasPrefix(oid, prefix) {
 			index := oid[len(prefix):]
+			value.ReadTime = readTime
 			returnValues[columnOid][index] = value
 			nextOidsMap[columnOid] = oid
 		} else {

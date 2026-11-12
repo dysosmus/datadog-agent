@@ -8,6 +8,7 @@ package valuestore
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/gosnmp/gosnmp"
 	"github.com/stretchr/testify/assert"
@@ -403,7 +404,7 @@ func Test_resultToColumnValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			values, nextOidsMap := ResultToColumnValues(tt.columnOids, tt.snmpPacket)
+			values, nextOidsMap := ResultToColumnValues(tt.columnOids, tt.snmpPacket, time.Time{})
 			assert.Equal(t, tt.expectedValues, values)
 			assert.Equal(t, tt.expectedNextOidsMap, nextOidsMap)
 		})
@@ -465,7 +466,7 @@ func Test_resultToScalarValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			values := ResultToScalarValues(tt.snmpPacket)
+			values := ResultToScalarValues(tt.snmpPacket, time.Time{})
 			assert.Equal(t, tt.expectedValues, values)
 		})
 	}
